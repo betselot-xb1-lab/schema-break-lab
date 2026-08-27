@@ -1,0 +1,48 @@
+name: Deploy one lab service
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to deploy; keep the consumer unchanged for the schema-break run
+        required: true
+        type: choice
+        options:
+          - producer
+          - consumer
+permissions:
+  contents: read
+  deployments: write
+concurrency:
+  group: lab-deploy-${{ inputs.service }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: lab-${{ inputs.service }}
+      url: ${{ steps.deploy.outputs.environment_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+      - name: Trigger deployment and observe the exact running revision
+        id: deploy
+        run: npm run deploy:render
+        env:
+          DEPLOY_SERVICE: ${{ inputs.service }}
+          DEPLOY_COMMIT: ${{ github.sha }}
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          SERVICE_BASE_URL: ${{ vars.SERVICE_BASE_URL }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-${{ inputs.service }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/*.jsonl
+          if-no-files-found: warn

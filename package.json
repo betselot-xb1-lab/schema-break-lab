@@ -1,0 +1,27 @@
+{
+  "name": "schema-break-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Synthetic TypeScript producer/consumer schema-break fixture",
+  "type": "commonjs",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test --test-timeout=60000 dist/test/*.test.js test/*.test.cjs",
+    "start:producer": "node --enable-source-maps --env-file-if-exists=.env dist/src/producer/main.js",
+    "start:consumer": "node --enable-source-maps --env-file-if-exists=.env dist/src/consumer/main.js",
+    "verify:local": "npm run build && node scripts/verify-local.cjs",
+    "verify:all": "node scripts/verify-all.cjs",
+    "deploy:render": "node scripts/deploy-render.cjs"
+  },
+  "dependencies": {
+    "@sentry/node": "10.71.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
+  }
+}

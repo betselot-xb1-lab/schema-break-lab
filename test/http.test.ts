@@ -66,6 +66,67 @@ test("the actual renamed producer over HTTP produces a 502 and invokes the repor
   assert.equal(captured[0].tags.consumer_revision, "unchanged-consumer");
 });
 
+test("a removed field over HTTP reports the contract failure with request and revision correlation (stub reporter)", async (t) => {
+  const producer = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json", "X-App-Revision": "removed-field-producer" });
+    response.end(JSON.stringify({ customerId: "synthetic-001" }));
+  });
+  const producerUrl = await listen(producer);
+  t.after(() => close(producer));
+  const captured: { error: Error; tags: Record<string, string> }[] = [];
+  const consumer = createConsumerServer({ producerUrl, revision: "unchanged-consumer", sentryConfigured: true, reportError: async (error, tags) => {
+    captured.push({ error, tags });
+    return { eventId: "stub-removed-field", transportFlushed: true };
+  } });
+  const consumerUrl = await listen(consumer);
+  t.after(() => close(consumer));
+  const response = await fetch(`${consumerUrl}/report`);
+  const body = await response.json() as Record<string, unknown>;
+  assert.equal(response.status, 502);
+  assert.equal(body.error, "producer_contract_violation");
+  assert.equal(body.sentryEventId, "stub-removed-field");
+  assert.equal(body.producerRevision, "removed-field-producer");
+  assert.equal(body.consumerRevision, "unchanged-consumer");
+  assert.equal(captured.length, 1);
+  assert.ok(captured[0].error instanceof ProducerContractError);
+  assert.equal(captured[0].error.field, "customerName");
+  assert.equal(captured[0].tags.request_id, body.requestId);
+  assert.equal(captured[0].tags.producer_revision, body.producerRevision);
+  assert.equal(captured[0].tags.consumer_revision, body.consumerRevision);
+  assert.equal(captured[0].tags.failure_kind, "producer_contract_violation");
+});
+
+test("a retyped field over HTTP reports the contract failure even if no event ID is returned (stub reporter)", async (t) => {
+  const producer = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json", "X-App-Revision": "retyped-field-producer" });
+    response.end(JSON.stringify({ customerId: "synthetic-001", customerName: 42 }));
+  });
+  const producerUrl = await listen(producer);
+  t.after(() => close(producer));
+  const captured: { error: Error; tags: Record<string, string> }[] = [];
+  const consumer = createConsumerServer({ producerUrl, revision: "unchanged-consumer", sentryConfigured: false, reportError: async (error, tags) => {
+    captured.push({ error, tags });
+    return { eventId: null, transportFlushed: null };
+  } });
+  const consumerUrl = await listen(consumer);
+  t.after(() => close(consumer));
+  const response = await fetch(`${consumerUrl}/report`);
+  const body = await response.json() as Record<string, unknown>;
+  assert.equal(response.status, 502);
+  assert.equal(body.error, "producer_contract_violation");
+  assert.equal(body.sentryEventId, null);
+  assert.equal(body.sentryTransportFlushed, null);
+  assert.equal(body.producerRevision, "retyped-field-producer");
+  assert.equal(body.consumerRevision, "unchanged-consumer");
+  assert.equal(captured.length, 1);
+  assert.ok(captured[0].error instanceof ProducerContractError);
+  assert.equal(captured[0].error.field, "customerName");
+  assert.equal(captured[0].tags.request_id, body.requestId);
+  assert.equal(captured[0].tags.producer_revision, body.producerRevision);
+  assert.equal(captured[0].tags.consumer_revision, body.consumerRevision);
+  assert.equal(captured[0].tags.failure_kind, "producer_contract_violation");
+});
+
 test("upstream HTTP failure is not misclassified as a schema break, even if reporting fails", async (t) => {
   const producer = createServer((_request, response) => { response.writeHead(503); response.end(); });
   const producerUrl = await listen(producer);

@@ -1,4 +1,4 @@
-// Runs the compiled entrypoints, not just imported functions. Never sends to real Sentry.
+// Runs the actual compiled, intentionally incompatible entrypoints. Never sends to real Sentry.
 const { spawn } = require("node:child_process");
 const { createServer } = require("node:net");
 const { mkdirSync, openSync, appendFileSync, closeSync } = require("node:fs");
@@ -8,7 +8,7 @@ const assert = require("node:assert/strict");
 const evidenceDir = resolve("evidence");
 mkdirSync(evidenceDir, { recursive: true });
 const started = new Date().toISOString();
-const evidencePath = resolve(evidenceDir, `local-baseline-${started.replace(/[:.]/g, "-")}.jsonl`);
+const evidencePath = resolve(evidenceDir, `local-schema-break-${started.replace(/[:.]/g, "-")}.jsonl`);
 const evidenceFd = openSync(evidencePath, "wx");
 const children = [];
 function record(event, fields = {}) {
@@ -52,7 +52,7 @@ function start(service, port, revision, extra = {}) {
   return child;
 }
 async function main() {
-  record("proof_started", { node: process.version, scope: "local compiled-entrypoint baseline; real Sentry and Render excluded" });
+  record("proof_started", { node: process.version, scope: "local compiled-entrypoint deliberate schema failure; expected HTTP 502, not healthy service; real Sentry and Render excluded" });
   const producerPort = await freePort();
   const consumerPort = await freePort();
   const producerUrl = `http://127.0.0.1:${producerPort}`;
@@ -66,15 +66,20 @@ async function main() {
   const payload = await raw.json();
   record("producer_response", { status: raw.status, body: payload });
   assert.equal(raw.status, 200);
-  assert.equal(payload.customerName, "Example Customer");
+  assert.deepEqual(payload, { customerId: "synthetic-001", fullName: "Example Customer" });
+  assert.equal(Object.hasOwn(payload, "customerName"), false);
   const response = await fetch(`${consumerUrl}/report`);
   const report = await response.json();
   record("consumer_response", { status: response.status, body: report });
-  assert.equal(response.status, 200);
-  assert.equal(report.displayName, "EXAMPLE CUSTOMER");
+  assert.equal(response.status, 502);
+  assert.equal(report.error, "producer_contract_violation");
+  assert.equal(Object.hasOwn(report, "displayName"), false);
+  assert.equal(report.sentryEventId, null, "This local check deliberately disables Sentry");
+  assert.equal(report.sentryTransportFlushed, null);
+  assert.equal(typeof report.requestId, "string");
   assert.equal(report.producerRevision, revision);
   assert.equal(report.consumerRevision, revision);
-  record("proof_passed", { evidencePath, notChecked: ["real Sentry ingestion", "Render", "GitHub Actions", "three merge histories", "deployed schema break", "Deja"] });
+  record("expected_schema_failure_observed", { evidencePath, status: response.status, notChecked: ["real Sentry ingestion", "Render", "GitHub Actions", "three merge histories", "deployed schema break", "Deja"] });
 }
 main().catch(error => { record("proof_failed", { name: error.name, message: error.message }); process.exitCode = 1; }).finally(async () => {
   await Promise.all(children.map(child => new Promise(resolve => {

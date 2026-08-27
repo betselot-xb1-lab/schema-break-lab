@@ -25,7 +25,7 @@ try {
     ...readdirSync("test").filter(name => name.endsWith(".test.cjs")).map(name => `test/${name}`),
   ];
   run("all-local-tests", ["--test", "--test-timeout=60000", ...tests]);
-  run("compiled-entrypoint-baseline", ["scripts/verify-local.cjs"]);
+  run("compiled-entrypoint-schema-failure", ["scripts/verify-local.cjs"]);
   record("verification_passed", { evidencePath: path, notChecked: ["real Sentry", "Render", "GitHub workflows or merge history", "deployed breaking change", "Deja"] });
 } catch (error) {
   record("verification_failed", { message: error.message });

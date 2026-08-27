@@ -4,7 +4,7 @@ A synthetic, independent TypeScript/Node producer and consumer. The producer ret
 
 ## Current scope
 
-This revision is the **compatible baseline**. A later reviewed change will rename `customerName` in the producer while the consumer remains deployed at its baseline revision. This repository alone is not proof that GitHub Actions, Render, or a real Sentry project have been exercised.
+This revision is the **intentional breaking scenario**. The producer now returns `fullName` instead of `customerName`; the consumer still requires the original field. `/report` is expected to fail with HTTP 502. The original compatible baseline is commit `38fe04d20cf69b1d8c961c2927941a2770e58f1a`. Use a compatible main-branch revision from before the incident PR merge for the first deployment. This repository alone is not proof that GitHub Actions, Render, or a real Sentry project have been exercised.
 
 ## Local commands
 
@@ -20,9 +20,9 @@ npm run verify:local
 npm run verify:all
 ```
 
-`verify:local` launches both compiled entrypoints, records actual JSONL timestamps under ignored `evidence/`, checks the returned revision and data, and shuts down its own processes. It deliberately overrides any inherited Sentry DSN so it cannot send to a real account. Tests also use only local receivers or explicitly labeled stubs.
+`verify:local` launches both compiled entrypoints, records actual JSONL timestamps under ignored `evidence/`, checks the renamed producer payload and the consumer's expected 502, and shuts down its own processes. A successful check means the intentional failure was observed, not that `/report` worked. It deliberately overrides any inherited Sentry DSN so it cannot send to a real account. Tests preserve the original compatible payload as an explicit fixture and also exercise the actual incompatible producer; Sentry checks use only local receivers or explicitly labeled stubs.
 
-`verify:all` records the actual commands, outputs, and exit codes for typecheck, build, the complete local suite, and the compiled-entrypoint baseline in an additional JSONL file. A failed step stops that verification run and stays in its evidence file; it is not overwritten by a later pass.
+`verify:all` records the actual commands, outputs, and exit codes for typecheck, build, the complete local suite, and the compiled-entrypoint expected-failure check in an additional JSONL file. A failed step stops that verification run and stays in its evidence file; it is not overwritten by a later pass.
 
 For manual work, create an ignored `.env` using `.env.example`, run `npm run build`, then run `npm run start:producer` and `npm run start:consumer` in separate terminals. Defaults are ports 3101 and 3102.
 
@@ -83,7 +83,7 @@ Public-repository Actions artifacts/logs are public evidence: use synthetic data
 
 Enable squash, rebase, and merge-commit methods, then perform real PR merges using all three. Enabling the settings does not establish the history. Record each PR URL, chosen method, original commit(s), and resulting main-branch SHA; rebase/squash methods are not reliably distinguishable from the final graph alone.
 
-Before the breaking change, capture a successful deployed `/report` response and both running revisions. The later producer-only PR will change the hand-written schema and payload; it must not update or redeploy the consumer. Baseline compatibility assertions will then need an explicitly reviewed change to expect the intended incompatibility, while preserving rejection tests. Do not disable failing checks or label them unrelated just to deploy.
+Before merging the breaking change, capture a successful deployed `/report` response and both running revisions. This incident PR changes the producer's hand-written schema and payload; it must not update or redeploy the consumer. Tests explicitly expect the actual producer's incompatibility and retain the original compatible contract as a separate fixture. No rejection checks are disabled. The earlier two failing compatibility tests remain useful historical evidence; green incident-scenario tests mean the expected failure is reproducible, not that the services are compatible.
 
 Before triggering the incident, write the expected field failure and revisions. After deploying ONLY the producer, invoke the authenticated consumer `/report` and inspect the real Sentry event. Preserve wrong turns and failures as well as successful attempts. Do not create a generic error and claim it proves the schema-break requirement. No Deja signup or integration is part of this stage.
 

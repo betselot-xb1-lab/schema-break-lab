@@ -16,8 +16,12 @@ async function close(server: Server) {
   await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 }
 
-test("real HTTP baseline crosses the producer and consumer, without reporting an error", async (t) => {
-  const producer = createProducerServer("producer-baseline");
+test("the original compatible fixture crosses HTTP to the consumer without reporting an error", async (t) => {
+  // Preserve the old producer contract explicitly; this is a fixture, not the current producer.
+  const producer = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json", "X-App-Revision": "producer-baseline" });
+    response.end(JSON.stringify({ customerId: "synthetic-001", customerName: "Example Customer" }));
+  });
   const producerUrl = await listen(producer);
   t.after(() => close(producer));
   let reports = 0;
@@ -34,13 +38,13 @@ test("real HTTP baseline crosses the producer and consumer, without reporting an
   assert.equal(reports, 0);
 });
 
-test("a renamed field over HTTP produces a 502 and invokes the error reporter with both revisions (stub reporter)", async (t) => {
-  const producer = createServer((_request, response) => {
-    response.writeHead(200, { "Content-Type": "application/json", "X-App-Revision": "renamed-producer" });
-    response.end(JSON.stringify({ customerId: "synthetic-001", fullName: "Example Customer" }));
-  });
+test("the actual renamed producer over HTTP produces a 502 and invokes the reporter with both revisions (stub reporter)", async (t) => {
+  const producer = createProducerServer("renamed-producer");
   const producerUrl = await listen(producer);
   t.after(() => close(producer));
+  const raw = await fetch(`${producerUrl}/customer`);
+  assert.equal(raw.status, 200);
+  assert.deepEqual(await raw.json(), { customerId: "synthetic-001", fullName: "Example Customer" });
   const captured: { error: Error; tags: Record<string, string> }[] = [];
   const consumer = createConsumerServer({ producerUrl, revision: "unchanged-consumer", sentryConfigured: true, reportError: async (error, tags) => {
     captured.push({ error, tags });
@@ -55,6 +59,9 @@ test("a renamed field over HTTP produces a 502 and invokes the error reporter wi
   assert.equal(body.sentryEventId, "stub-event-not-sentry-evidence");
   assert.equal(captured.length, 1);
   assert.ok(captured[0].error instanceof ProducerContractError);
+  assert.equal(captured[0].error.field, "customerName");
+  assert.equal(captured[0].tags.request_id, body.requestId);
+  assert.equal(captured[0].tags.failure_kind, "producer_contract_violation");
   assert.equal(captured[0].tags.producer_revision, "renamed-producer");
   assert.equal(captured[0].tags.consumer_revision, "unchanged-consumer");
 });

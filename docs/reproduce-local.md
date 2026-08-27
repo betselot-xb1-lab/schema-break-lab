@@ -13,3 +13,15 @@ Use synthetic customer data only. Run commands from the repository root.
 Expected baseline payload: `customerId: synthetic-001`, `customerName: Example Customer`. The consumer returns HTTP 200 and `displayName: EXAMPLE CUSTOMER`.
 
 Record the HTTP status and body, request ID, both revisions, and actual timestamp. A health response alone does not test the producer-to-consumer request. An SDK-generated event ID does not prove Sentry received an event.
+
+## Deliberate producer change
+
+Start from a recorded successful baseline, with the consumer still running. On a dedicated incident branch, change the producer's `customerName` property to `fullName` in both its interface and returned object. Do not change the consumer's contract.
+
+Rebuild and restart only the producer. Label uncommitted code honestly; do not give it the unchanged baseline's revision. Request `/customer` again: expect `fullName` and no `customerName`. Then request the same consumer's `/report`: expect HTTP 502, `producer_contract_violation`, and a `ProducerContractError` mentioning `customerName`.
+
+Open the matching Sentry event and compare its request ID, producer revision, and consumer revision with the HTTP response and log. The release represents the consumer, while `producer_revision` identifies its upstream service. `handled: yes` means the exception was caught; it does not turn the failed request into a success.
+
+The baseline's compatibility tests should fail after this rename. Preserve that result. Before merging a deliberately incompatible fixture, explicitly test its expected failure and keep separate coverage proving the consumer still accepts the original contract. Do not disable assertions or update the consumer to accept the new field just to get green checks.
+
+Keep event screenshots, credentials, local paths, and private reports outside the public repository. A completed local scenario does not establish a deployment, three merge methods, or any external incident-attribution result. Record those separately.

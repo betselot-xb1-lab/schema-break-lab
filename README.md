@@ -8,6 +8,8 @@ This revision is the **compatible baseline**. A later reviewed change will renam
 
 ## Local commands
 
+See [the local reproduction guide](docs/reproduce-local.md) for the baseline and intentional incident procedure.
+
 Node is pinned to `22.15.1` to match the chosen local runtime. This is not a claim that it has current security fixes. Review the Node 22 security updates before broader use. Dependencies are pinned in `package-lock.json`; `npm ci` installs them without silently upgrading.
 
 ```sh
